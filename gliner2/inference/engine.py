@@ -402,7 +402,7 @@ class GLiNER2(Extractor):
         # Create dataset and loader
         dataset = list(zip(normalized, schema_dicts))
 
-        from gliner2.trainer import ExtractorDataCollator
+        from gliner2.training.trainer import ExtractorDataCollator
         collator = ExtractorDataCollator(self.processor, is_training=False)
 
         loader = DataLoader(
