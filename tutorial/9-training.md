@@ -658,10 +658,11 @@ config = TrainingConfig(
     
     # LoRA (see LoRA section)
     use_lora=False,
-    lora_r=8,
-    lora_alpha=16.0,
+    lora_r=16,
+    lora_alpha=32.0,
     lora_dropout=0.0,
-    lora_target_modules=["query", "key", "value"],
+    lora_target_modules=["encoder", "span_rep", "classifier", "count_embed", "count_pred"],
+    save_adapter_only=True,
 )
 ```
 
@@ -679,6 +680,26 @@ LoRA (Low-Rank Adaptation) enables parameter-efficient fine-tuning by training o
 - **Faster Training**: Fewer gradients to compute
 - **Multiple Adapters**: Train different adapters for different tasks
 - **Easy Deployment**: Checkpoints contain merged weights (ready for inference)
+- **Granular Control**: Target specific layers or entire module groups
+
+### LoRA Module Groups
+
+GLiNER2 supports both coarse-grained (module groups) and fine-grained (specific layers) control:
+
+**Module Groups** (apply to entire modules):
+- `"encoder"` - All encoder layers (query, key, value, dense)
+- `"span_rep"` - All linear layers in span representation
+- `"classifier"` - All linear layers in classifier head
+- `"count_embed"` - All linear layers in count embedding
+- `"count_pred"` - All linear layers in count prediction
+
+**Specific Encoder Layers** (fine-grained control):
+- `"encoder.query"` - Only query projection layers
+- `"encoder.key"` - Only key projection layers
+- `"encoder.value"` - Only value projection layers
+- `"encoder.dense"` - Only dense (FFN) layers
+
+**Default**: All modules (`["encoder", "span_rep", "classifier", "count_embed", "count_pred"]`) for maximum adaptation.
 
 ### Basic LoRA Training
 
@@ -700,7 +721,8 @@ config = TrainingConfig(
     lora_r=16,              # Rank (higher = more params, better approximation)
     lora_alpha=32,          # Scaling factor (typically 2*r)
     lora_dropout=0.1,       # Dropout for regularization
-    lora_target_modules=["query", "key", "value", "dense"],  # Target layers
+    lora_target_modules=["encoder"],  # All encoder layers (query, key, value, dense)
+    save_adapter_only=True, # Save only adapter weights (not full model)
     
     # Learning rate (task_lr used for LoRA + task heads when LoRA enabled)
     task_lr=5e-4,
@@ -744,13 +766,32 @@ config = TrainingConfig(
     # Typical values: 0.0, 0.05, 0.1
     lora_dropout=0.1,
     
-    # Target modules: Which layers to apply LoRA to
-    # Applied to encoder only
-    # Common choices:
-    #   - ["query", "key", "value"]: Attention layers only (default)
-    #   - ["query", "key", "value", "dense"]: Attention + FFN
-    #   - ["query", "key", "value", "dense", "layer_norm"]: All layers
-    lora_target_modules=["query", "key", "value"],
+    # Target modules: Which module groups to apply LoRA to
+    # Module groups:
+    #   - "encoder": All encoder layers (query, key, value, dense)
+    #   - "encoder.query": Only query projection layers in encoder
+    #   - "encoder.key": Only key projection layers in encoder
+    #   - "encoder.value": Only value projection layers in encoder
+    #   - "encoder.dense": Only dense (FFN) layers in encoder
+    #   - "span_rep": All linear layers in span representation module
+    #   - "classifier": All linear layers in classifier head
+    #   - "count_embed": All linear layers in count embedding
+    #   - "count_pred": All linear layers in count prediction
+    #
+    # Common configurations:
+    #   - ["encoder"]: Encoder only (query, key, value, dense) - good starting point
+    #   - ["encoder.query", "encoder.key", "encoder.value"]: Attention only - memory efficient
+    #   - ["encoder.dense"]: FFN only - alternative approach
+    #   - ["encoder", "span_rep", "classifier"]: Encoder + task heads - better performance
+    #   - ["encoder", "span_rep", "classifier", "count_embed", "count_pred"]: All modules (default) - maximum adaptation
+    #
+    # Default: All modules for maximum adaptation capacity
+    lora_target_modules=["encoder", "span_rep", "classifier", "count_embed", "count_pred"],
+    
+    # Save adapter only (recommended)
+    # When True: saves only LoRA adapter weights (~2-10 MB)
+    # When False: saves full model with merged weights (~100-500 MB)
+    save_adapter_only=True,
     
     # Learning rate for LoRA parameters
     # When LoRA is enabled, task_lr is used for both LoRA and task-specific heads
@@ -782,14 +823,14 @@ trainer.train(train_data="train.jsonl")
 **Example 2: High-Performance LoRA**
 
 ```python
-# Use higher rank for better performance
+# Use higher rank and include task heads for better performance
 config = TrainingConfig(
     output_dir="./lora_high_perf",
     use_lora=True,
     lora_r=32,             # Higher rank
     lora_alpha=64,
     lora_dropout=0.05,
-    lora_target_modules=["query", "key", "value", "dense"],  # More layers
+    lora_target_modules=["encoder", "span_rep", "classifier"],  # Encoder + task heads
     batch_size=16,
     task_lr=1e-3,          # Slightly higher LR
     num_epochs=15
@@ -1123,10 +1164,16 @@ config = TrainingConfig(use_lora=True)
 # Use smaller rank
 config = TrainingConfig(use_lora=True, lora_r=8)
 
-# Check target modules
+# Target only encoder (fewer modules = less memory)
 config = TrainingConfig(
     use_lora=True,
-    lora_target_modules=["query", "key", "value"]  # Fewer modules = less memory
+    lora_target_modules=["encoder"]
+)
+
+# Target only attention layers (even less memory)
+config = TrainingConfig(
+    use_lora=True,
+    lora_target_modules=["encoder.query", "encoder.key", "encoder.value"]
 )
 ```
 
@@ -1135,10 +1182,16 @@ config = TrainingConfig(
 # Increase rank
 config = TrainingConfig(use_lora=True, lora_r=32)
 
-# Add more target modules
+# Add task heads to target modules
 config = TrainingConfig(
     use_lora=True,
-    lora_target_modules=["query", "key", "value", "dense"]
+    lora_target_modules=["encoder", "span_rep", "classifier"]
+)
+
+# Target all modules for maximum adaptation
+config = TrainingConfig(
+    use_lora=True,
+    lora_target_modules=["encoder", "span_rep", "classifier", "count_embed", "count_pred"]
 )
 
 # Increase learning rate

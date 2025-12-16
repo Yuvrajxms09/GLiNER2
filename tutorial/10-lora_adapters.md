@@ -111,10 +111,7 @@ config = TrainingConfig(
     lora_r=8,                                   # Rank (4, 8, 16, 32)
     lora_alpha=16.0,                           # Scaling factor (usually 2*r)
     lora_dropout=0.0,                          # Dropout for LoRA layers
-    lora_target_modules=[                      # Which layers to adapt
-        "query", "key", "value",               # Attention layers
-        "dense"                                # Feed-forward layers
-    ],
+    lora_target_modules=["encoder"],           # Apply to all encoder layers (query, key, value, dense)
     save_adapter_only=True,                    # Save only adapter (not full model)
     
     # Optimization
@@ -259,7 +256,7 @@ def train_domain_adapter(
         lora_r=8,
         lora_alpha=16.0,
         lora_dropout=0.0,
-        lora_target_modules=["query", "key", "value", "dense"],
+        lora_target_modules=["encoder"],  # All encoder layers
         save_adapter_only=True,
         
         # Logging & Checkpointing
@@ -719,16 +716,42 @@ config = TrainingConfig(
 
 ### 2. Target Module Selection
 
+**Understanding Module Groups:**
+
+GLiNER2 supports fine-grained control over which layers receive LoRA adaptation:
+
 ```python
-# Minimal adaptation (fastest, smallest)
-lora_target_modules=["query", "key", "value"]
+# Option 1: Encoder only - all layers (query, key, value, dense)
+# Use case: General domain adaptation, good starting point
+# Memory: Moderate (~1-2% of model parameters)
+lora_target_modules=["encoder"]
 
-# Standard adaptation (balanced)
-lora_target_modules=["query", "key", "value", "dense"]
+# Option 2: Encoder - attention layers only
+# Use case: Very memory-constrained scenarios
+# Memory: Low (~0.5-1% of model parameters)
+lora_target_modules=["encoder.query", "encoder.key", "encoder.value"]
 
-# Aggressive adaptation (slowest, largest, best performance)
-lora_target_modules=["query", "key", "value", "dense", "out_proj"]
+# Option 3: Encoder - FFN layers only
+# Use case: Alternative to attention-only, sometimes better for certain tasks
+# Memory: Low (~0.5-1% of model parameters)
+lora_target_modules=["encoder.dense"]
+
+# Option 4: Encoder + task heads
+# Use case: When you want to adapt both representation and task-specific layers
+# Memory: Moderate-High (~2-4% of model parameters)
+lora_target_modules=["encoder", "span_rep", "classifier"]
+
+# Option 5: All modules (DEFAULT)
+# Use case: Maximum adaptation capacity, best performance
+# Memory: High (~3-5% of model parameters)
+lora_target_modules=["encoder", "span_rep", "classifier", "count_embed", "count_pred"]
 ```
+
+**Recommendations:**
+- **Start with encoder only** (`["encoder"]`) for most tasks
+- **Add task heads** if performance is insufficient
+- **Use attention-only** for extreme memory constraints
+- **Use all modules** (default) when you need maximum performance
 
 ### 3. Adapter Organization
 
@@ -849,8 +872,8 @@ config = TrainingConfig(
     # Enable mixed precision
     fp16=True,
     
-    # Reduce target modules
-    lora_target_modules=["query", "key", "value"],  # Skip "dense"
+    # Target only attention layers (fewer parameters)
+    lora_target_modules=["encoder.query", "encoder.key", "encoder.value"],
 )
 ```
 
