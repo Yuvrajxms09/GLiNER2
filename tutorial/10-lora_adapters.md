@@ -118,8 +118,8 @@ config = TrainingConfig(
     save_adapter_only=True,                    # Save only adapter (not full model)
     
     # Optimization
-    save_strategy="epoch",
-    eval_strategy="epoch",
+    eval_strategy="epoch",  # Evaluates and saves at end of each epoch
+    eval_steps=500,  # Used when eval_strategy="steps"
     logging_steps=50,
     fp16=True,  # Use mixed precision if GPU available
 )
@@ -262,9 +262,9 @@ def train_domain_adapter(
         lora_target_modules=["query", "key", "value", "dense"],
         save_adapter_only=True,
         
-        # Logging
-        save_strategy="epoch",
-        eval_strategy="no",  # Add eval_data if you have validation set
+        # Logging & Checkpointing
+        eval_strategy="no",  # Set to "epoch" or "steps" if you have validation set
+        eval_steps=500,  # Used when eval_strategy="steps"
         logging_steps=50,
         fp16=True,
     )

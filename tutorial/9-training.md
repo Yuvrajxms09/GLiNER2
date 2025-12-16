@@ -138,12 +138,12 @@ config = TrainingConfig(
     warmup_ratio=0.1,
     scheduler_type="cosine",
     fp16=True,
-    eval_strategy="epoch",
-    save_strategy="epoch",
+    eval_strategy="epoch",  # Evaluates and saves at end of each epoch
     save_best=True,
     early_stopping=True,
     early_stopping_patience=3,
-    report_to=["tensorboard"]
+    report_to_wandb=True,
+    wandb_project="ner_training"
 )
 
 # Step 6: Train
@@ -475,6 +475,16 @@ combined.add_many(dataset2.examples)
 
 ## Training Configuration
 
+### Checkpoint Saving Behavior
+
+**Important**: Checkpoints are automatically saved when evaluation runs. The `eval_strategy` parameter controls both when to evaluate and when to save checkpoints:
+
+- `eval_strategy="steps"` (default): Evaluate and save every `eval_steps` steps
+- `eval_strategy="epoch"`: Evaluate and save at the end of each epoch
+- `eval_strategy="no"`: No evaluation or checkpoint saving (except final checkpoint)
+
+The best checkpoint (based on `metric_for_best`) is always saved separately when `save_best=True`.
+
 ### Basic Configuration
 
 ```python
@@ -503,16 +513,15 @@ config = TrainingConfig(
     # Mixed precision
     fp16=True,
     
-    # Checkpointing
-    save_strategy="epoch",
+    # Checkpointing & Evaluation (saves when evaluating)
+    eval_strategy="epoch",  # "epoch", "steps", or "no"
+    eval_steps=500,  # Used when eval_strategy="steps"
     save_best=True,
-    
-    # Evaluation
-    eval_strategy="epoch",
     
     # Logging
     logging_steps=50,
-    report_to=["tensorboard"]
+    report_to_wandb=False,
+    wandb_project=None
 )
 ```
 
@@ -544,15 +553,13 @@ config = TrainingConfig(
     warmup_ratio=0.1,
     scheduler_type="cosine",
     fp16=True,
-    save_strategy="steps",
-    save_steps=500,
+    eval_strategy="steps",  # Evaluates and saves every N steps
+    eval_steps=500,
     save_total_limit=5,
     save_best=True,
-    eval_strategy="steps",
-    eval_steps=500,
     early_stopping=True,
     early_stopping_patience=5,
-    report_to=["tensorboard", "wandb"],
+    report_to_wandb=True,
     wandb_project="gliner2-production"
 )
 ```
@@ -611,23 +618,19 @@ config = TrainingConfig(
     fp16=True,
     bf16=False,
     
-    # Checkpointing
-    save_strategy="epoch",  # "epoch", "steps", or "no"
-    save_steps=500,
+    # Checkpointing & Evaluation (saves when evaluating)
+    eval_strategy="steps",  # "epoch", "steps", or "no" (default: "steps")
+    eval_steps=500,  # Evaluate and save every N steps (when eval_strategy="steps")
     save_total_limit=3,
     save_best=True,
-    save_optimizer_state=True,
     metric_for_best="eval_loss",
     greater_is_better=False,
     
-    # Evaluation
-    eval_strategy="epoch",
-    eval_steps=500,
-    
     # Logging
-    logging_steps=50,
+    logging_steps=50,  # Update progress bar metrics every N steps
+    # Metrics (loss, learning rate, throughput) are shown in the progress bar
     logging_first_step=True,
-    report_to=["tensorboard"],
+    report_to_wandb=False,  # Enable W&B logging for experiment tracking
     wandb_project=None,
     wandb_entity=None,
     wandb_run_name=None,
@@ -705,7 +708,7 @@ config = TrainingConfig(
     
     # Other settings
     fp16=True,
-    eval_strategy="epoch",
+    eval_strategy="epoch",  # Evaluates and saves at end of each epoch
     save_best=True
 )
 
@@ -836,18 +839,20 @@ trainer.train(train_data=medical_examples)
 5. **Higher learning rate**: LoRA typically works well with `task_lr=5e-4` to `1e-3`
 6. **Checkpoint merging**: Checkpoints automatically contain merged weights (ready for inference)
 
-### Resuming LoRA Training
+### Loading Checkpoints
 
 ```python
-# Resume training from LoRA checkpoint
+# Load model from checkpoint (for inference or continued training)
 trainer = GLiNER2Trainer(model, config)
 
-# Resume from checkpoint (weights are merged in checkpoint)
-trainer.resume_from_checkpoint("./output_lora/checkpoint-1000")
+# Load checkpoint (weights are merged in checkpoint)
+trainer.load_checkpoint("./output_lora/checkpoint-1000")
 
-# Continue training (LoRA will be re-applied)
+# Continue training (LoRA will be re-applied if use_lora=True)
 trainer.train(train_data="train.jsonl")
 ```
+
+**Note**: Checkpoints do not save optimizer/scheduler state. Training always starts fresh, but model weights are loaded.
 
 ---
 
@@ -878,15 +883,19 @@ trainer = GLiNER2Trainer(
 trainer.train(train_data=examples, eval_data=eval_examples)
 ```
 
-### Resume from Checkpoint
+### Loading Checkpoints
 
 ```python
 trainer = GLiNER2Trainer(model, config)
 
-# Resume training
-trainer.resume_from_checkpoint("./output/checkpoint-1000")
+# Load checkpoint (model weights only, no optimizer state)
+trainer.load_checkpoint("./output/checkpoint-1000")
+
+# Continue training (starts fresh with loaded weights)
 trainer.train(train_data=examples)
 ```
+
+**Note**: Checkpoints contain model weights only. Training state (optimizer, scheduler) is not saved, so training always starts fresh.
 
 ### Distributed Training
 
@@ -940,7 +949,7 @@ config = TrainingConfig(
 ```python
 config = TrainingConfig(
     output_dir="./output",
-    report_to=["wandb"],
+    report_to_wandb=True,
     wandb_project="my-gliner-project",
     wandb_entity="my-team",
     wandb_run_name="experiment-1",
@@ -1029,10 +1038,10 @@ config = TrainingConfig(num_workers=8)
 # 3. Use mixed precision
 config = TrainingConfig(fp16=True)
 
-# 4. Reduce validation frequency
+# 4. Reduce evaluation frequency (also reduces checkpoint saves)
 config = TrainingConfig(
     eval_strategy="steps",
-    eval_steps=1000
+    eval_steps=1000  # Evaluate and save every 1000 steps
 )
 
 # 5. Use LoRA (faster training)
@@ -1165,16 +1174,18 @@ config = TrainingConfig(use_lora=True, num_epochs=20)
 4. **Save intermediate checkpoints:**
    ```python
    config = TrainingConfig(
-       save_strategy="steps",
-       save_steps=500,
+       eval_strategy="steps",  # Evaluates and saves every N steps
+       eval_steps=500,
        save_best=True
    )
    ```
 
-5. **Monitor training with tensorboard or W&B:**
+5. **Monitor training with W&B:**
    ```python
-   config = TrainingConfig(report_to=["tensorboard"])
-   # Then: tensorboard --logdir ./output/logs
+   config = TrainingConfig(
+       report_to_wandb=True,
+       wandb_project="my-project"
+   )
    ```
 
 6. **Use descriptive entity types and add descriptions:**
