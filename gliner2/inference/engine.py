@@ -682,7 +682,8 @@ class GLiNER2(Extractor):
 
             idx = entity_names.index(name)
             meta = metadata.get("entity_metadata", {}).get(name, {})
-            ent_threshold = meta.get("threshold") or threshold
+            meta_threshold = meta.get("threshold")
+            ent_threshold = meta_threshold if meta_threshold is not None else threshold
             dtype = meta.get("dtype", "list")
 
             spans = self._find_spans(
@@ -739,7 +740,8 @@ class GLiNER2(Extractor):
 
         rel_threshold = threshold
         if rel_name in metadata.get("relation_metadata", {}):
-            rel_threshold = metadata["relation_metadata"][rel_name].get("threshold") or threshold
+            meta_threshold = metadata["relation_metadata"][rel_name].get("threshold")
+            rel_threshold = meta_threshold if meta_threshold is not None else threshold
 
         ordered_fields = metadata.get("field_orders", {}).get(rel_name, field_names)
 
@@ -825,7 +827,8 @@ class GLiNER2(Extractor):
                 fidx = field_names.index(fname)
                 field_key = f"{struct_name}.{fname}"
                 meta = metadata.get("field_metadata", {}).get(field_key, {})
-                field_threshold = meta.get("threshold") or threshold
+                meta_threshold = meta.get("threshold")
+                field_threshold = meta_threshold if meta_threshold is not None else threshold
                 dtype = meta.get("dtype", "list")
                 validators = meta.get("validators", [])
 
