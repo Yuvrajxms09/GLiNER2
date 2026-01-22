@@ -837,7 +837,11 @@ class SchemaTransformer:
                             nested = []
                             for sub in field:
                                 if str(sub).startswith("[selection]"):
-                                    pos = self._find_sublist([str(sub)[11:]], text_tokens[:len_prefix])
+                                    # Use case-insensitive matching for choice fields
+                                    pos = self._find_sublist(
+                                        [str(sub)[11:]], text_tokens[:len_prefix], 
+                                        case_insensitive=True
+                                    )
                                 else:
                                     pos = self._find_sublist(
                                         self._tokenize_text(str(sub)), text_tokens
@@ -846,7 +850,11 @@ class SchemaTransformer:
                             positions.append(nested)
                         else:
                             if str(field).startswith("[selection]"):
-                                pos = self._find_sublist([str(field)[11:]], text_tokens[:len_prefix])
+                                # Use case-insensitive matching for choice fields
+                                pos = self._find_sublist(
+                                    [str(field)[11:]], text_tokens[:len_prefix],
+                                    case_insensitive=True
+                                )
                             else:
                                 pos = self._find_sublist(
                                     self._tokenize_text(str(field)), text_tokens
@@ -876,17 +884,37 @@ class SchemaTransformer:
 
         return results
 
-    def _find_sublist(self, sub: List[str], lst: List[str]) -> List[Tuple[int, int]]:
-        """Find all occurrences of sublist in list."""
+    def _find_sublist(
+            self, 
+            sub: List[str], 
+            lst: List[str], 
+            case_insensitive: bool = False
+    ) -> List[Tuple[int, int]]:
+        """Find all occurrences of sublist in list.
+        
+        Args:
+            sub: Sublist to search for
+            lst: List to search in
+            case_insensitive: If True, use case-insensitive matching
+        """
         if not sub or all(t == "" for t in sub):
             return [(-1, -1)]
 
         sub_len = len(sub)
-        matches = [
-            (i, i + sub_len - 1)
-            for i in range(len(lst) - sub_len + 1)
-            if lst[i:i + sub_len] == sub
-        ]
+        
+        if case_insensitive:
+            sub_lower = [s.lower() for s in sub]
+            matches = [
+                (i, i + sub_len - 1)
+                for i in range(len(lst) - sub_len + 1)
+                if [t.lower() for t in lst[i:i + sub_len]] == sub_lower
+            ]
+        else:
+            matches = [
+                (i, i + sub_len - 1)
+                for i in range(len(lst) - sub_len + 1)
+                if lst[i:i + sub_len] == sub
+            ]
         return matches or [(-1, -1)]
 
     def _tokenize_text(self, text: str) -> List[str]:
