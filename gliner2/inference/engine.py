@@ -1229,8 +1229,8 @@ class GLiNER2(Extractor):
         schema = self.create_schema().relations(relation_types)
         return self.batch_extract(texts, schema, batch_size, threshold, 0, format_results, include_confidence, include_spans)
 
-    def _parse_field_spec(self, spec: str) -> Tuple[str, str, Optional[List[str]], Optional[str]]:
-        """Parse field specification string.
+    def _parse_field_spec(self, spec: Union[str, Dict]) -> Tuple[str, str, Optional[List[str]], Optional[str]]:
+        """Parse field specification string or dictionary.
         
         Format: "name::dtype::choices::description" where all parts after name are optional.
         - dtype: 'str' for single value, 'list' for multiple values
@@ -1242,7 +1242,15 @@ class GLiNER2(Extractor):
             "seating::[indoor|outdoor|bar]::Seating preference"  
             "dietary::[vegetarian|vegan|gluten-free|none]::list::Dietary restrictions"
         """
-        parts = spec.split('::')  # No limit - parse all parts
+        if isinstance(spec, dict):
+            return (
+                spec.get("name", ""),
+                spec.get("dtype", "list"),
+                spec.get("choices"),
+                spec.get("description")
+            )
+
+        parts = spec.split('::')
         name = parts[0]
         dtype, choices, desc = "list", None, None
         dtype_explicitly_set = False
